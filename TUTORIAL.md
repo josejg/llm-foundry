@@ -330,16 +330,38 @@ The majority of our training setups use `triton`. -->
 
 
 ### Can I finetune using PEFT / LoRA?
-- The LLM Foundry codebase does not directly have examples of PEFT or LORA workflows. However, our MPT model is a subclass of HuggingFace `PretrainedModel`, and https://github.com/mosaicml/llm-foundry/pull/346 added required features to enable HuggingFace’s [PEFT](https://huggingface.co/docs/peft/index) / [LORA](https://huggingface.co/docs/peft/conceptual_guides/lora) workflows for MPT. MPT models with LoRA modules can be trained either using LLM Foundry or Hugging Face's [accelerate](https://huggingface.co/docs/accelerate/index). Within LLM Foundry, run (`scripts/train/train.py`), adding `lora` arguments to the config `.yaml`, like so:
+- The LLM Foundry codebase does not directly have examples of PEFT or LORA workflows. However, our MPT model is a subclass of HuggingFace `PretrainedModel`, and https://github.com/mosaicml/llm-foundry/pull/346 added required features to enable HuggingFace’s [PEFT](https://huggingface.co/docs/peft/index) / [LORA](https://huggingface.co/docs/peft/conceptual_guides/lora) workflows for MPT. MPT models with LoRA modules can be trained either using LLM Foundry or Hugging Face's [accelerate](https://huggingface.co/docs/accelerate/index). Within LLM Foundry, run (`scripts/train/train.py`), adding `model.lora` arguments to the config `.yaml`, like so:
 <!--pytest.mark.skip-->
 ```yaml
-lora:
-  args:
-    r: 16
-    lora_alpha: 32
-    lora_dropout: 0.05
-    target_modules: ['Wqkv']
+model:
+  name: hf_causal_lm
+  pretrained: true
+  init_device: mixed # mixed | cpu, not meta. mixed -> fsdp_config.use_orig_params = false
+  ...
+  lora:
+    args:
+      r: 16
+      lora_alpha: 32
+      target_modules: ["Wqkv", "out_proj", "up_proj", "down_proj"] # or any subset of these for MPT-7B
+      lora_dropout: 0.05
+      bias: none
+      task_type: "CAUSAL_LM"
 ```
+You can train LoRA models using FSDP for further memory savings. in your `.yaml`, specify:
+<!--pytest.mark.skip-->
+```yaml
+fsdp_config:
+  use_orig_params: false
+  sharding_strategy: FULL_SHARD
+  mixed_precision: PURE
+  activation_checkpointing: true
+  activation_checkpointing_reentrant: false
+  activation_cpu_offload: false
+  limit_all_gathers: true
+```
+if `model.init_device
+or default to DDP by leaving out the `fsdp_config` section entirely.
+
 - In the current release, these features have Beta support.
 - For efficiency, The MPT model concatenates the `Q`, `K`, and `V` matrices in each attention block into a single `Wqkv` matrix that is three times wider. Currently, LoRA supports a low-rank approximation to this `Wqkv` matrix.
 - When evaluating with PEFT / LoRA seperated weight, just set `pretrained_lora_id_or_path` in `model`(Find an example [here](scripts/eval/yamls/hf_lora_eval.yml#L19)).

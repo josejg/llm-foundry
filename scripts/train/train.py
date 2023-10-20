@@ -14,8 +14,7 @@ from omegaconf import DictConfig, ListConfig
 from omegaconf import OmegaConf as om
 from transformers import PreTrainedTokenizerBase
 
-from llmfoundry import (COMPOSER_MODEL_REGISTRY, ComposerHFCausalLM,
-                        MPTForCausalLM, build_finetuning_dataloader,
+from llmfoundry import (COMPOSER_MODEL_REGISTRY, build_finetuning_dataloader,
                         build_text_denoising_dataloader)
 from llmfoundry.data.text_data import build_text_dataloader
 from llmfoundry.utils.builders import (build_algorithm, build_callback,
@@ -91,6 +90,39 @@ def validate_config(cfg: DictConfig):
         )
         torch._dynamo.config.suppress_errors = True  # type: ignore
 
+    # Validate lora config within the same function
+    lora_config = cfg.model.get('lora', None)
+    if lora_config is not None and isinstance(lora_config, (dict, DictConfig)):
+        args = lora_config.get('args', None)
+        if args is not None and isinstance(args, (dict, DictConfig)):
+            r = args.get('r', None)
+            if r is None or not isinstance(r, int):
+                raise ValueError('lora r must be an integer')
+
+            lora_alpha = args.get('lora_alpha', None)
+            if lora_alpha is None or not isinstance(lora_alpha, (float, int)):
+                raise ValueError('lora_alpha must be a float/int')
+
+            target_modules = args.get('target_modules', None)
+            if target_modules is None or not isinstance(target_modules,
+                                                        (list, ListConfig)):
+                raise ValueError('target_modules must be a list')
+            elif len(target_modules) == 0:
+                raise ValueError('target_modules is an empty list')
+            else:
+                for module in target_modules:
+                    if not isinstance(module, str):
+                        raise ValueError(
+                            'target_modules must be a list of strings')
+            lora_dropout = args.get('lora_dropout', None)
+            if lora_dropout is None or not isinstance(lora_dropout, float):
+                raise ValueError('lora_dropout must be a float')
+
+            task_type = args.get('task_type', None)
+            if task_type is None or not isinstance(task_type, str):
+                raise ValueError('task_type must be a string')
+            print('=' * 20 + 'LoRa is enabled!' + '=' * 20)
+
 
 def build_composer_model(model_cfg: DictConfig,
                          tokenizer: PreTrainedTokenizerBase):
@@ -103,51 +135,9 @@ def build_composer_model(model_cfg: DictConfig,
     return COMPOSER_MODEL_REGISTRY[model_cfg.name](model_cfg, tokenizer)
 
 
-def build_composer_peft_model(
-        model_cfg: DictConfig, lora_cfg: DictConfig,
-        tokenizer: PreTrainedTokenizerBase) -> ComposerHFCausalLM:
-    try:
-        from peft import LoraConfig, get_peft_model
-    except ImportError as e:
-        raise ImportError(
-            'Error importing from peft. Please verify that peft and peft utils '
-            +
-            'are installed by running `pip install -e .[peft]` from `llm-foundry/`. '
-            + f'Error encountered: {e}')
-
-    # 1) loads a hf model, 2) adds peft modules, 3) wraps it in a ComposerHFCausalLM.
-    print('Building Lora config...')
-    lora_cfg = LoraConfig(**lora_cfg.args)
-
-    print('Building model from HuggingFace checkpoint...')
-    model = MPTForCausalLM.from_pretrained(
-        model_cfg.pretrained_model_name_or_path, trust_remote_code=True)
-    print('Model built!')
-
-    print('Adding Lora modules...')
-    model = get_peft_model(model, lora_cfg)
-    print('Lora modules added!')
-
-    model = ComposerHFCausalLM(model, tokenizer)
-
-    return model
-
-
-def print_trainable_parameters(model: torch.nn.Module) -> None:
-    # Prints the number of trainable parameters in the model.
-    trainable_params = 0
-    all_param = 0
-    for _, param in model.named_parameters():
-        all_param += param.numel()
-        if param.requires_grad:
-            trainable_params += param.numel()
-    print(
-        f'trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}'
-    )
-
-
 def build_dataloader(cfg: DictConfig, tokenizer: PreTrainedTokenizerBase,
                      device_batch_size: int):
+
     if cfg.name == 'text':
         return build_text_dataloader(
             cfg,
@@ -226,10 +216,7 @@ def main(cfg: DictConfig):
     fsdp_config: Optional[Dict] = om.to_container(
         fsdp_dict_config
     ) if fsdp_dict_config is not None else None  # type: ignore
-    lora_config: Optional[DictConfig] = pop_config(cfg,
-                                                   'lora',
-                                                   must_exist=False,
-                                                   default_value=None)
+
     eval_loader_config: Optional[DictConfig] = pop_config(cfg,
                                                           'eval_loader',
                                                           must_exist=False,
@@ -386,14 +373,9 @@ def main(cfg: DictConfig):
     tokenizer = build_tokenizer(tokenizer_config)
 
     # Build Model
-    print('Initializing model...')
     with init_context:
-        if lora_config is not None:  # frozen model + trainable lora modules
-            model: ComposerHFCausalLM = build_composer_peft_model(
-                model_config, lora_config, tokenizer)
-            print_trainable_parameters(model)  # should not be 100%
-        else:  # standard model
-            model = build_composer_model(model_config, tokenizer)
+        print('Initializing model...')
+        model = build_composer_model(model_config, tokenizer)
 
     # Log number of parameters
     n_params = sum(p.numel() for p in model.parameters())
