@@ -115,7 +115,7 @@ extra_deps['peft'] = [
     'scipy>=1.10.0,<=1.11.0',
     # TODO: pin peft when it stabilizes.
     # PyPI does not support direct dependencies, so we remove this line before uploading from PyPI
-    'peft==0.4.0',
+    'peft==0.7.1',
 ]
 
 extra_deps['openai'] = [
