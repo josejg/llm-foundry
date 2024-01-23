@@ -17,6 +17,7 @@ from composer.metrics.nlp import (InContextLearningCodeEvalAccuracy,
                                   InContextLearningMultipleChoiceAccuracy,
                                   InContextLearningQAAccuracy,
                                   LanguageCrossEntropy, LanguagePerplexity)
+from composer.metrics.nlp import JsonF1Score
 from composer.utils import dist
 from omegaconf import DictConfig
 from torch import nn
@@ -74,7 +75,8 @@ class ComposerHFCausalLM(HuggingFaceModelWithZLoss):
             InContextLearningQAAccuracy(),
             InContextLearningCodeEvalAccuracy(),
             InContextLearningLMExpectedCalibrationError(),
-            InContextLearningMCExpectedCalibrationError()
+            InContextLearningMCExpectedCalibrationError(),
+            JsonF1Score(),
         ]
 
         # if we are passed a DictConfig, we need to instantiate the model

@@ -12,6 +12,7 @@ from composer.metrics.nlp import (InContextLearningLMAccuracy,
                                   InContextLearningMultipleChoiceAccuracy,
                                   InContextLearningQAAccuracy,
                                   LanguageCrossEntropy, LanguagePerplexity)
+from composer.metrics.nlp import JsonF1Score
 from composer.models import ComposerModel
 from torchmetrics import Metric
 from transformers import AutoTokenizer
@@ -30,7 +31,8 @@ class InferenceAPIEvalWrapper(ComposerModel):
             InContextLearningMultipleChoiceAccuracy(),
             InContextLearningQAAccuracy(),
             InContextLearningLMExpectedCalibrationError(),
-            InContextLearningMCExpectedCalibrationError()
+            InContextLearningMCExpectedCalibrationError(),
+            JsonF1Score(),
         ]
         self.eval_metrics = {
             metric.__class__.__name__: metric for metric in eval_metrics
