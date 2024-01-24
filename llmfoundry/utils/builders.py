@@ -1,4 +1,4 @@
-# Copyright 2022 MosaicML LLM Foundry authors
+#EvalOutputLogging Copyright 2022 MosaicML LLM Foundry authors
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
@@ -12,8 +12,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 import torch
 from composer import algorithms
 from composer.callbacks import (EarlyStopper, Generate, LRMonitor, MemoryMonitor,
-                                OptimizerMonitor, RuntimeEstimator, EvalOutputLogging,
-                                SpeedMonitor)
+                                OptimizerMonitor, RuntimeEstimator, SpeedMonitor)
 from composer.core import Algorithm, Callback, Evaluator
 from composer.datasets.in_context_learning_evaluation import \
     get_icl_task_dataloader
@@ -206,8 +205,6 @@ def build_callback(name: str, kwargs: Union[DictConfig, Dict[str,
         if isinstance(kwargs, DictConfig):
             kwargs = om.to_object(kwargs)  # pyright: ignore
         return HuggingFaceCheckpointer(**kwargs)
-    elif name == 'eval_output_logging':
-        return EvalOutputLogging(**kwargs)
     else:
         raise ValueError(f'Not sure how to build callback: {name}')
 
