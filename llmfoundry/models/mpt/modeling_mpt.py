@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from composer.metrics import (InContextLearningCodeEvalAccuracy,
+                              InContextLearningBatchCodeEvalAccuracy,
                               InContextLearningLMAccuracy,
                               InContextLearningLMExpectedCalibrationError,
                               InContextLearningMCExpectedCalibrationError,
@@ -1027,6 +1028,7 @@ class ComposerMPTCausalLM(HuggingFaceModel):
             InContextLearningMultipleChoiceAccuracy(),
             InContextLearningQAAccuracy(),
             InContextLearningCodeEvalAccuracy(),
+            InContextLearningBatchCodeEvalAccuracy(),
             InContextLearningLMExpectedCalibrationError(),
             InContextLearningMCExpectedCalibrationError(),
         ]
