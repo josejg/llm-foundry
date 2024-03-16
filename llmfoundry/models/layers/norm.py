@@ -162,6 +162,26 @@ class CompiledNemoRMSNorm(NemoRMSNorm):
         norm = torch.norm(x, dim=-1, keepdim=True) * self.scale
         return x / norm.clamp(min=self.eps) * self.g
 
+
+class LPNemoRMSNorm(NemoRMSNorm):
+
+    def forward(self, x):
+        downcast_x = _cast_if_autocast_enabled(x)
+        downcast_g = _cast_if_autocast_enabled(self.g)
+        with torch.autocast(enabled=False, device_type=x.device.type):
+            norm = torch.norm(downcast_x, dim=-1, keepdim=True) * self.scale
+            return downcast_x / norm.clamp(min=self.eps) * downcast_g
+
+class CLPNemoRMSNorm(LPNemoRMSNorm):
+
+    @torch.compile
+    def forward(self, x):
+        downcast_x = _cast_if_autocast_enabled(x)
+        downcast_g = _cast_if_autocast_enabled(self.g)
+        with torch.autocast(enabled=False, device_type=x.device.type):
+            norm = torch.norm(downcast_x, dim=-1, keepdim=True) * self.scale
+            return compiled_rms_norm(downcast_x / norm.clamp(min=self.eps) * downcast_g)
+
 NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'layernorm': torch.nn.LayerNorm,
     'low_precision_layernorm': LPLayerNorm,
@@ -171,4 +191,6 @@ NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'compiled_low_precision_rmsnorm': CLPRMSNorm,
     'nemo_rmsnorm': NemoRMSNorm,
     'compiled_nemo_rmsnorm': CompiledNemoRMSNorm,
+    'low_precision_nemo_rmsnorm': LPNemoRMSNorm,
+    'compiled_low_precision_nemo_rmsnorm': CLPNemoRMSNorm,
 }
