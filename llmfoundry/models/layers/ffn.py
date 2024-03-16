@@ -194,11 +194,19 @@ class MPTFusedGLU(nn.Module):
         return self.down_proj(self.act(gate) * up)
 
 
+class MPTCompFusedGLU(MPTFusedGLU):
+
+    @torch.compile
+    def forward(self, x: torch.tensor) -> torch.tensor:
+        up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        return self.down_proj(self.act(gate) * up)
+
 FFN_CLASS_REGISTRY = {
     'mptmlp': MPTMLP,
     'mptglu': MPTGLU,
     'mptfusedglu': MPTFusedGLU,
     'mptcompglu': MPTCompGLU,
+    'mptcompfusedglu': MPTCompFusedGLU,
 }
 
 if te is not None:
