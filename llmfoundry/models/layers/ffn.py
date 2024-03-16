@@ -147,10 +147,51 @@ class MPTGLU(MPTMLP):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
 
+class MPTFusedGLU(nn.Module):
+
+    def __init__(
+        self,
+        d_model: int,
+        expansion_ratio: Union[int, float],
+        fc_type: str = 'torch',
+        ffn_hidden_size: Optional[int] = None,
+        act_fn: Callable[[torch.Tensor], torch.Tensor] = _DEFAULT_ACT_FN,
+        device: Optional[str] = None,
+        bias: bool = True,
+    ):
+        super().__init__()
+        ffn_hidden_size = resolve_ffn_hidden_size(d_model, expansion_ratio,
+                                                  ffn_hidden_size)
+        self.ffn_hidden_size = ffn_hidden_size
+        self.fc_kwargs: dict[str, Any] = {
+            'bias': bias,
+        }
+
+        self.fc_kwargs['device'] = device
+
+        self.up_gate_proj = FC_CLASS_REGISTRY[fc_type](
+            d_model,
+            2 * ffn_hidden_size,
+            **self.fc_kwargs,
+        )
+        self.act = act_fn
+        self.down_proj = FC_CLASS_REGISTRY[fc_type](
+            ffn_hidden_size,
+            d_model,
+            **self.fc_kwargs,
+        )
+        self.down_proj._is_residual = True
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        return self.down_proj(self.act(gate) * up)
+
 
 FFN_CLASS_REGISTRY = {
     'mptmlp': MPTMLP,
     'mptglu': MPTGLU,
+    'mptfusedglu': MPTFusedGLU,
 }
 
 if te is not None:
