@@ -127,6 +127,7 @@ class CLPRMSNorm(LPRMSNorm):
             return compiled_rms_norm(downcast_x, downcast_weight,
                             self.eps).to(dtype=x.dtype)
 
+import math
 
 class NemoRMSNorm(torch.nn.Module):
     def __init__(self, 
@@ -140,14 +141,14 @@ class NemoRMSNorm(torch.nn.Module):
         if isinstance(normalized_shape, int):
             dim = normalized_shape
         elif isinstance(normalized_shape, list):
-            dim = normalized_shape[0]
+            dim = math.prod(normalized_shape)
         elif isinstance(normalized_shape, torch.Size):
-            dim = normalized_shape[0]
+            dim = math.prod(normalized_shape)
 
         self.scale = dim ** -0.5
         self.eps = eps
         self.g = torch.nn.Parameter(
-                torch.ones(normalized_shape, dtype=dtype, device=device)
+                torch.ones(dim, dtype=dtype, device=device)
         )
 
     def forward(self, x):
@@ -182,6 +183,52 @@ class CLPNemoRMSNorm(LPNemoRMSNorm):
             norm = torch.norm(downcast_x, dim=-1, keepdim=True) * self.scale
             return compiled_rms_norm(downcast_x / norm.clamp(min=self.eps) * downcast_g)
 
+
+from flash_attn.ops.triton.layer_norm import rms_norm_fn
+
+class TritonRMSNorm(torch.nn.Module):
+    def __init__(
+        self,
+        normalized_shape: Union[int, List[int], torch.Size],
+        eps: float = 1e-5,
+        dropout_p: float = 0.0,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+    ):
+        if isinstance(normalized_shape, int):
+            hidden_size = normalized_shape
+        elif isinstance(normalized_shape, list):
+            hidden_size = math.prod(normalized_shape)
+        elif isinstance(normalized_shape, torch.Size):
+            hidden_size = math.prod(normalized_shape)
+
+        factory_kwargs = {"device": device, "dtype": dtype}
+        super().__init__()
+        self.eps = eps
+        if dropout_p > 0.0:
+            self.drop = torch.nn.Dropout(dropout_p)
+        else:
+            self.drop = None
+        self.weight = torch.nn.Parameter(torch.empty(hidden_size, **factory_kwargs))
+        self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.ones_(self.weight)
+
+    def forward(self, x, residual=None, prenorm=False, residual_in_fp32=False):
+        return rms_norm_fn(
+            x,
+            self.weight,
+            self.bias,
+            residual=residual,
+            eps=self.eps,
+            dropout_p=self.drop.p if self.drop is not None and self.training else 0.0,
+            prenorm=prenorm,
+            residual_in_fp32=residual_in_fp32,
+        )
+
+
 NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'layernorm': torch.nn.LayerNorm,
     'low_precision_layernorm': LPLayerNorm,
@@ -193,4 +240,5 @@ NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'compiled_nemo_rmsnorm': CompiledNemoRMSNorm,
     'low_precision_nemo_rmsnorm': LPNemoRMSNorm,
     'compiled_low_precision_nemo_rmsnorm': CLPNemoRMSNorm,
+    'triton_rmsnorm': TritonRMSNorm,
 }
