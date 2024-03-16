@@ -61,6 +61,8 @@ def rms_norm(x: torch.Tensor,
         return output * weight
     return output
 
+compiled_rms_norm = torch.compile(rms_norm)
+
 
 class RMSNorm(torch.nn.Module):
 
@@ -82,6 +84,11 @@ class RMSNorm(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return rms_norm(x.float(), self.weight, self.eps).to(dtype=x.dtype)
+
+class CompiledRMSNorm(RMSNorm):
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return compiled_rms_norm(x.float(), self.weight, self.eps).to(dtype=x.dtype)
 
 
 class LPRMSNorm(RMSNorm):
@@ -110,10 +117,58 @@ class LPRMSNorm(RMSNorm):
             return rms_norm(downcast_x, downcast_weight,
                             self.eps).to(dtype=x.dtype)
 
+class CLPRMSNorm(LPRMSNorm):
+ 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        downcast_x = _cast_if_autocast_enabled(x)
+        downcast_weight = _cast_if_autocast_enabled(
+            self.weight) if self.weight is not None else self.weight
+        with torch.autocast(enabled=False, device_type=x.device.type):
+            return compiled_rms_norm(downcast_x, downcast_weight,
+                            self.eps).to(dtype=x.dtype)
+
+
+class NemoRMSNorm(torch.nn.Module):
+    def __init__(self, 
+        normalized_shape: Union[int, List[int], torch.Size],
+        eps=1e-8,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+     ):
+        super().__init__()
+
+        if isinstance(normalized_shape, int):
+            dim = normalized_shape
+        elif isinstance(normalized_shape, list):
+            dim = normalized_shape[0]
+        elif isinstance(normalized_shape, torch.Size):
+            dim = normalized_shape[0]
+
+        self.scale = dim ** -0.5
+        self.eps = eps
+        self.g = torch.nn.Parameter(
+                torch.ones(normalized_shape, dtype=dtype, device=device)
+        )
+
+    def forward(self, x):
+        norm = torch.norm(x, dim=-1, keepdim=True) * self.scale
+        return x / norm.clamp(min=self.eps) * self.g
+
+
+class CompiledNemoRMSNorm(NemoRMSNorm):
+
+    @torch.compile
+    def forward(self, x):
+        norm = torch.norm(x, dim=-1, keepdim=True) * self.scale
+        return x / norm.clamp(min=self.eps) * self.g
 
 NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'layernorm': torch.nn.LayerNorm,
     'low_precision_layernorm': LPLayerNorm,
     'rmsnorm': RMSNorm,
     'low_precision_rmsnorm': LPRMSNorm,
+    'compiled_rmsnorm': CompiledRMSNorm,
+    'compiled_low_precision_rmsnorm': CLPRMSNorm,
+    'nemo_rmsnorm': NemoRMSNorm,
+    'compiled_nemo_rmsnorm': CompiledNemoRMSNorm,
 }
