@@ -144,7 +144,13 @@ class MPTGLU(MPTMLP):
             **self.fc_kwargs,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.tensor) -> torch.tensor:
+        return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
+
+class MPTCompGLU(MPTGLU):
+
+    @torch.compile
+    def forward(self, x: torch.tensor) -> torch.tensor:
         return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
 
 class MPTFusedGLU(nn.Module):
@@ -192,6 +198,7 @@ FFN_CLASS_REGISTRY = {
     'mptmlp': MPTMLP,
     'mptglu': MPTGLU,
     'mptfusedglu': MPTFusedGLU,
+    'mptcompglu': MPTCompGLU,
 }
 
 if te is not None:
@@ -210,7 +217,7 @@ def build_ffn(
     **kwargs: Any,
 ) -> nn.Module:
     ffn_type = kwargs.pop('ffn_type')
-    if ffn_type in ['mptmlp', 'mptglu', 'mptfusedglu']:
+    if ffn_type in ['mptmlp', 'mptglu', 'mptfusedglu', 'mptcompglu']:
         if len(kwargs) > 0:
             raise ValueError(
                 f'MPTMLP (or MPTGLU) got an unexpected keyword argument: {kwargs}'
