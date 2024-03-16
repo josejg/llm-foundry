@@ -225,7 +225,7 @@ def build_ffn(
     **kwargs: Any,
 ) -> nn.Module:
     ffn_type = kwargs.pop('ffn_type')
-    if ffn_type in ['mptmlp', 'mptglu', 'mptfusedglu', 'mptcompglu']:
+    if ffn_type in ['mptmlp', 'mptglu', 'mptfusedglu', 'mptcompglu', 'mptcompfusedglu']:
         if len(kwargs) > 0:
             raise ValueError(
                 f'MPTMLP (or MPTGLU) got an unexpected keyword argument: {kwargs}'
