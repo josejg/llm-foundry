@@ -190,7 +190,7 @@ class MPTFusedGLU(nn.Module):
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        up, gate = x.chunk(2, dim=-1)
         return self.down_proj(self.act(gate) * up)
 
 
@@ -198,7 +198,7 @@ class MPTCompFusedGLU(MPTFusedGLU):
 
     @torch.compile
     def forward(self, x: torch.tensor) -> torch.tensor:
-        up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        up, gate = x.chunk(2, dim=-1)
         return self.down_proj(self.act(gate) * up)
 
 FFN_CLASS_REGISTRY = {
