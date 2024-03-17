@@ -228,6 +228,22 @@ class TritonRMSNorm(torch.nn.Module):
             residual_in_fp32=residual_in_fp32,
         )
 
+class LPTritonRMSNorm(TritonRMSNorm):
+    def forward(self, x, residual=None, prenorm=False, residual_in_fp32=False):
+        downcast_x = _cast_if_autocast_enabled(x)
+        downcast_weight = _cast_if_autocast_enabled(self.weight)
+        with torch.autocast(enabled=False, device_type=x.device.type):
+            return rms_norm_fn(
+                downcast_x,
+                downcast_weight,
+                self.bias,
+                residual=residual,
+                eps=self.eps,
+                dropout_p=self.drop.p if self.drop is not None and self.training else 0.0,
+                prenorm=prenorm,
+                residual_in_fp32=residual_in_fp32,
+            )
+
 
 NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'layernorm': torch.nn.LayerNorm,
@@ -241,4 +257,5 @@ NORM_CLASS_REGISTRY: Dict[str, Type[torch.nn.Module]] = {
     'low_precision_nemo_rmsnorm': LPNemoRMSNorm,
     'compiled_low_precision_nemo_rmsnorm': CLPNemoRMSNorm,
     'triton_rmsnorm': TritonRMSNorm,
+    'low_precision_triton_rmsnorm': LPTritonRMSNorm,
 }
