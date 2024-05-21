@@ -202,7 +202,7 @@ def prepare_hf_causal_lm_model_for_fsdp(
         active_adapters = [adapter.lower() for adapter in model.active_adapters]
         for name, module in model.named_modules():
             ### BADFIX
-            if module.endswith('base_layer'):
+            if name.endswith('base_layer'):
                 module._fsdp_wrap = True
                 continue
             ### END BADFIX
