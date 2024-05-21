@@ -529,7 +529,7 @@ def main(cfg: DictConfig) -> Trainer:
 
     from rich import print as cprint
     print("FSDP WRAPPING")
-    cprint(trainer.model)
+    cprint(trainer.state.model)
 
     if train_cfg.log_config:
         log.info('Logging config')
