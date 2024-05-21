@@ -201,6 +201,11 @@ def prepare_hf_causal_lm_model_for_fsdp(
         peft_type = model.peft_type.lower()
         active_adapters = [adapter.lower() for adapter in model.active_adapters]
         for name, module in model.named_modules():
+            ### BADFIX
+            if module.endswith('base_layer'):
+                module._fsdp_wrap = True
+                continue
+            ### END BADFIX
             if peft_type in name.lower() and any(
                 adapter in name.lower() for adapter in active_adapters
             ):
