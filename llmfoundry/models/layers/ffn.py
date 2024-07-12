@@ -263,7 +263,9 @@ class FusedMPTGLU(nn.Module):
         self.down_proj._is_residual = True
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        # up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        # rewritten with chunk to avoid mem issues
+        up, gate = self.up_gate_proj(x).chunk(2, dim=-1)
         return self.down_proj(self.act(gate) * up)
 
 def build_fusedmptglu(
