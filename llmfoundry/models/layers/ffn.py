@@ -220,6 +220,87 @@ def build_mptglu(
         bias=bias,
     )
 
+class FusedMPTGLU(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        expansion_ratio: Union[int, float],
+        fc_type: Optional[dict[str, Any]] = None,
+        ffn_hidden_size: Optional[int] = None,
+        act_fn: Callable[[torch.Tensor], torch.Tensor] = _DEFAULT_ACT_FN,
+        device: Optional[str] = None,
+        bias: bool = True,
+    ):
+        super().__init__()
+        ffn_hidden_size = resolve_ffn_hidden_size(
+            d_model,
+            expansion_ratio,
+            ffn_hidden_size,
+        )
+        self.ffn_hidden_size = ffn_hidden_size
+
+        # Usually, fc_type dict should be passed in through the parent block's __init__ function.
+        if fc_type is None:
+            fc_type = fc_type_defaults
+            fc_type['bias'] = bias
+            fc_type['device'] = device
+        self.fc_type = fc_type
+        self.fc_type_name = self.fc_type['name']
+
+        self.up_gate_proj = build_fc(
+            name=self.fc_type_name,
+            in_features=d_model,
+            out_features=2 * ffn_hidden_size,
+            fc_kwargs=self.fc_type,
+        )
+        self.act = act_fn
+        self.down_proj = build_fc(
+            name=self.fc_type_name,
+            in_features=ffn_hidden_size,
+            out_features=d_model,
+            fc_kwargs=self.fc_type,
+        )
+        self.down_proj._is_residual = True
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        up, gate = self.up_gate_proj(x).split(self.ffn_hidden_size, dim=-1)
+        return self.down_proj(self.act(gate) * up)
+
+def build_fusedmptglu(
+    d_model: int,
+    expansion_ratio: Union[int, float],
+    fc_type: Optional[dict[str, Any]] = None,
+    ffn_hidden_size: Optional[int] = None,
+    ffn_act_fn: Optional[dict] = None,
+    device: Optional[str] = None,
+    bias: bool = True,
+) -> nn.Module:
+
+    return FusedMPTGLU(
+        d_model=d_model,
+        expansion_ratio=expansion_ratio,
+        fc_type=fc_type,
+        act_fn=resolve_ffn_act_fn(ffn_act_fn),
+        ffn_hidden_size=ffn_hidden_size,
+        device=device,
+        bias=bias,
+    )
+
+
+def build_compiled_mptglu(
+    *args, **kwargs,
+) -> nn.Module:
+    module = build_mptglu(*args, **kwargs)
+    module.forward = torch.compile(module.forward)
+    return module
+
+
+def build_compiled_fusedmptglu(
+    *args, **kwargs,
+) -> nn.Module:
+    module = build_fusedmptglu(*args, **kwargs)
+    module.forward = torch.compile(module.forward)
+    return module
 
 def build_mptmlp(
     d_model: int,
@@ -559,6 +640,9 @@ def build_mb_dmoe(
 
 
 ffns.register('mptglu', func=build_mptglu)
+ffns.register('fusedmptglu', func=build_fusedmptglu)
+ffns.register('compiled_mptglu', func=build_compiled_mptglu)
+ffns.register('compiled_fusedmptglu', func=build_compiled_fusedmptglu)
 ffns.register('mptmlp', func=build_mptmlp)
 ffns.register('torch_dmoe', func=build_torch_dmoe)
 
