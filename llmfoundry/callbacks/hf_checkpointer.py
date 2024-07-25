@@ -561,7 +561,7 @@ class HuggingFaceCheckpointer(Callback):
         dist.barrier()
 
         if dist.get_global_rank() == 0:
-            if self.mlflow_registered_model_name and self._is_last_batch(state):
+            if self._is_last_batch(state):
 
                 new_model_instance = self.transform_model_pre_registration(
                     new_model_instance,
